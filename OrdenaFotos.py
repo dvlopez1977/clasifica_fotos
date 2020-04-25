@@ -3,10 +3,12 @@ import os;
 import sys;
 import hashlib;
 import io;
+import yaml;
 from shutil import copy
 from datetime import datetime;
 from PIL import Image;
 from PIL import UnidentifiedImageError;
+
 
 # algunas constantes
 nArg=3 # n'umero de argumentos de entrada
@@ -73,13 +75,22 @@ def copiarFoto(foto):
 # foto[1] directorio destino
 	if not esDirectorio(foto[1]):
 		crearDirectorio(foto[1])
+	rutaDestino=os.path.join(foto[1], foto[2])
 	copy(foto[0],foto[1])
-	
+
+def seleccionaNombre(nombre, DirectorioFoto):
+# si el fichero DirectorioFoto/nombre ya existe le anhadimos un contador a nombre
+	i=0
+	nombreTemp=nombre
+	absolutePath=os.path.join(DirectorioFoto, nombreTemp)
+	while os.path.exists(absolutePath):
+		i+=1
+		nombreTemp= nombre + str(i)
+		absolutePath=os.path.join(DirectorioFoto, nombreTemp)
+	return nombreTemp
 #
 # Programa principal
 #
-sys.argv.append("/Users/lopezd7/Desktop/fotos")
-sys.argv.append("/Users/lopezd7/Desktop/fotos-clasificadas")
 
 # comprobaci'on de pre condiciones
 # ?hemos recibido el numero correcto de parametros?
@@ -121,49 +132,92 @@ print(DirectorioDestino)
 Fotos=dict()
 # Obtengo la lista de archivos en un directorio
 
-for ruta,dirs,archs in os.walk(DirectorioOrigen):
-	for archivo in archs:
-#		print (os.path.join(ruta, archivo))
-		# calculamos el nombre, el md5, y la fecha
-		error="NO"
-		nombre= os.path.join(ruta, archivo)
-		md5sum= calcularMD5sum(nombre)
-		try:
-			fecha= obtenerFechaFoto(nombre)
-			anho= fecha[:4]
-			mes= fecha[5:7]
-			DirectorioFoto=os.path.join(DirectorioDestino, anho, mes + '/')
-		except KeyError:
-			error="SI"
-			fecha="Error/KeyError"
-			DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
-		except AttributeError:
-			error="SI"
-			fecha="Error/AttributeError"
-			DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
-		except UnidentifiedImageError:
-			error="SI"
-			fecha="Error/NoFoto"
-			DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
-		if md5sum.hexdigest() not in Fotos:
-			foto=[nombre, DirectorioFoto, fecha, error]
-			Fotos[md5sum.hexdigest()]=foto
-			copiarFoto(foto)
-			bitacora(rutaBitacora, nombre + "," + DirectorioFoto + "," + fecha + "," + error)
-		else:
-			fecha="DUPLICADO"
-			bitacora(rutaBitacora, nombre + "," + Fotos[md5sum.hexdigest()][0] + "," + fecha + "," + error)
-		
-#		DirectorioFoto= DirectorioDestino + "/" + anho + "-" + mes
-#		if not esDirectorio(DirectorioFoto):
-#			if not crearDirectorio(DirectorioFoto):
-#				mostrarError("ERROR: no pude crear el directorio " + DirectorioFoto)
-#				sys.exit(1)
-		# en este punto conocemos
-		#	El nombre del fichero
-		#	El md5sum
-		#	La ruta donde esta el fichero
-		#	La ruta donde debemos copiar el fichero
-#		if not hayDuplicado(DirectorioFoto, nombre, md5sum, DirectorioFoto):
-#			print nombre + " md5sum: " + md5sum.hexdigest() + " fecha: " + fecha + " " + DirectorioFoto
-		
+# ?hay una ejecuci'on anterior que no se completo?
+if os.path.exists(os.path.join(sys.argv[2], "EjecucionParcial.yml")):
+# cargamos los md5sums de las fotos que se crearon
+	parcial=open(os.path.join(sys.argv[2], "EjecucionParcial.yml"),'r')
+	Fotos=yaml.load(parcial)
+	parcial.close()
+try:
+	for ruta,dirs,archs in os.walk(DirectorioOrigen.encode('utf-8', 'surrogateescape').decode('utf-8')):
+		for archivo in archs:
+#			archivo=archivo.encode('utf-8', 'surrogateescape').decode('utf-8')
+			print("working with archive {}".format(archivo))
+			# calculamos el nombre, el md5, y la fecha
+			error="NO"
+			nombre= os.path.join(ruta, archivo)
+			nombre=nombre.encode('utf-8', 'surrogateescape').decode('ISO-8859-1')
+			md5sum= calcularMD5sum(nombre)
+			try:
+				fecha= obtenerFechaFoto(nombre)
+				anho= fecha[:4]
+				mes= fecha[5:7]
+				DirectorioFoto=os.path.join(DirectorioDestino, anho, mes + '/')
+# TypeError: 'NoneType' object is not subscriptable
+			except TypeError:
+				error="SI"
+				fecha="Error/TypeError"
+				DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
+			except KeyError:
+				error="SI"
+				fecha="Error/KeyError"
+				DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
+			except AttributeError:
+				error="SI"
+				fecha="Error/AttributeError"
+				DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
+			except UnidentifiedImageError:
+				error="SI"
+				fecha="Error/NoFoto"
+				DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
+# UnicodeEncodeError: 'utf-8' codec can't encode character '\udcaa' in position 120: surrogates not allowed
+			except UnicodeEncodeError:
+				error="SI"
+				fecha="Error/UnicodeEncodeError"
+				DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
+			except KeyboardInterrupt:
+				raise
+			except :
+				error="SI"
+				fecha="Error/Unknown"
+				DirectorioFoto=os.path.join(DirectorioDestino, fecha + '/')
+
+			if md5sum.hexdigest() not in Fotos:
+				try:
+# En este punto sabemos que la imagen es unica (no hay otra con el mismo md5sum), 
+# sin embargo puede haber un fichero con el mismo nombre y una imagen diferente procedente de otra camara 
+# si DirectorioFoto/nombre ya existe entonces tenemos que cambiar el nombre al fichero para no sobrescribir
+# la foto con otra cuyo nombre de fichero es el mismo
+# en nombre tenemos la ruta absoluta al fichero origen, necesitamos solo el nombre del fichero
+					nombreFichero=nombre.split('/')[-1]
+					nombreDestino=seleccionaNombre(nombreFichero, DirectorioFoto)
+
+					foto=[nombre, DirectorioFoto, nombreDestino, fecha, error]
+					Fotos[md5sum.hexdigest()]=foto
+#				copiarFoto(foto)
+					bitacora(rutaBitacora, nombre + "," + DirectorioFoto + "/" + nombreDestino + "," + fecha + "," + error)
+				except UnicodeEncodeError:
+					nombre=nombre.encode('utf-8', 'surrogateescape').decode('ISO-8859-1')
+					print("problema al trabajar con {}".format(nombre))
+			else:
+				try:
+					fecha="DUPLICADO"
+					bitacora(rutaBitacora, nombre + "," + Fotos[md5sum.hexdigest()][0] + "," + fecha + "," + error)
+				except UnicodeEncodeError:
+					print("un problema al dectectar un duplicado {}".format(nombre))
+	try:	
+		print("Comienzo a copiar fotos")
+		for foto in Fotos:
+			print(Fotos[foto])
+			copiarFoto(Fotos[foto])
+	except UnicodeEncodeError:
+		print("Problema intentando copiar fichero {}".format(foto))
+except :
+# volcamos el trabajo parcial en "EjecucionParcial.yml" y terminamos
+#	print(Fotos)
+	print("Ha habido una excepcion trabajando con el fichero {}".format(nombre))
+	parcial= open(os.path.join(sys.argv[2], "EjecucionParcial.yml"),'w')
+	yaml.dump(Fotos, stream=parcial)
+	parcial.close()
+	raise
+
