@@ -11,7 +11,9 @@ from PIL import UnidentifiedImageError;
 
 
 # algunas constantes
-nArg=3 # n'umero de argumentos de entrada
+nArg=4 # n'umero de argumentos de entrada
+stage=1 # ejecutamos todas las etapas por defecto
+datos_fotos='datos_fotos.yml'
 
 def bitacora(rutaBitacora, mensaje):
 	print("{}: {}".format(rutaBitacora, mensaje))
@@ -21,7 +23,7 @@ def bitacora(rutaBitacora, mensaje):
 
 def muestraError(mensajeError="Error generico: el programador ha sido demasiado vago para especificar que ha pasado"):
 	print (mensajeError)
-	
+
 def comoUsar(mensajeError="Error generico: el programador ha sido demasiado vago para especificar que ha pasado"):
 	muestraError(mensajeError)
 	print ("Este programa recorre un directorio lleno de fotos")
@@ -36,7 +38,7 @@ def esDirectorio(ruta):
 		return True
 	else:
 		return False
-	
+
 def calcularMD5sum(rutaAbsoluta, tamanoFragmento=io.DEFAULT_BUFFER_SIZE):
 	md5 = hashlib.md5()
 	with io.open(rutaAbsoluta, mode="rb") as fd:
@@ -49,7 +51,7 @@ def obtenerFechaFoto(rutaAbsoluta):
 	fechaFoto= foto._getexif()[36867]
 	foto.close()
 	return fechaFoto
-	
+
 def crearDirectorio(ruta):
 # dada una ruta intenta crearla, si no puede devuelve error
 	print ("Intento crear el directorio " + ruta)
@@ -69,12 +71,12 @@ def hayDuplicado(ruta, md5sum, DirectorioDestino):
 	return True
 
 def copiarFoto(foto):
-# Copia una foto al directorio destino. 
+# Copia una foto al directorio destino.
 # foto es una lista que:
-# foto[0] ruta origen 
+# foto[0] ruta origen
 # foto[1] directorio destino
-	if not esDirectorio(foto[1]):
-		crearDirectorio(foto[1])
+	# if not esDirectorio(foto[1]):
+	# 	crearDirectorio(foto[1])
 	rutaDestino=os.path.join(foto[1], foto[2])
 	copy(foto[0],foto[1])
 
@@ -88,6 +90,50 @@ def seleccionaNombre(nombre, DirectorioFoto):
 		nombreTemp= nombre + str(i)
 		absolutePath=os.path.join(DirectorioFoto, nombreTemp)
 	return nombreTemp
+
+def calcularFileType(ruta_absoluta):
+    #TO DO
+    return 'unknown file type'
+
+
+def stage1(ruta_fotos):
+    datos_fotos="datos_fotos.yml"
+# En la etapa calculamos los datos de cada fichero
+#
+    #src path for the file --> this is the key for the dictionary
+    #md5 sum
+    #file type
+    #error type
+    #dst path for the file, it will include the month and year in which the photo was shoot if the file is a photo and if that data is available
+    df=dict()
+# si tenemos datos de una ejecucion anterior, los cargamos
+    if os.path.exists(os.path.join(ruta_fotos, datos_fotos)):
+    # cargamos los md5sums de las fotos que se crearon
+	parcial=open(os.path.join(ruta_fotos, datos_fotos),'r')
+	df=yaml.load(parcial)
+        close(parcial)
+        # en este punto hemos cargado los datos de una ejecucion parcial anterior
+    # Recorremos todos los ficheros que encontremos en 'ruta_fotos'
+    for ruta,dirs,archs in os.walk(ruta_fotos.encode('utf-8', 'surrogateescape').decode('utf-8')):
+        for archivo in archs:
+            ruta_absoluta=os.path.join(ruta, archivo)
+            if not ruta_absoluta in df:
+                # es la primera vez que procesamos el archivo
+                datos_archivo = dict()
+                datos_archivo['md5']=calcularMD5sum(ruta_absoluta)
+                datos_archivo['file_type']=calcularFileType(ruta_absoluta)
+                datos_archivo['error_type']='' # no es relevante todavia
+                datos_archivo['dst_path']='' #no es relevante todavia
+                datos_archivo['src_path']=ruta_absoluta
+                datos_archivo['date']='' # TO DO
+                df[ruta_absoluta]=datos_archivo
+    # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
+    parcial= open(os.path.join(ruta_fotos, datos_fotos),'w')
+    yaml.dump(df, stream=parcial)
+    parcial.close()
+
+    return true
+
 #
 # Programa principal
 #
@@ -97,10 +143,10 @@ def seleccionaNombre(nombre, DirectorioFoto):
 if len(sys.argv) != nArg:
 	# error, mostramos la informaci'on de uso y salimos
 	comoUsar()
-	sys.exit(1) 
+	sys.exit(1)
 else:
 	print ("Numero de par'ametros correcto " + sys.argv[1] + " " + sys.argv[2])
-	
+
 # ?los parametros que hemos recibido son directorios?
 
 if not esDirectorio(sys.argv[1]):
@@ -119,7 +165,7 @@ if not esDirectorio(sys.argv[2]):
 		else:
 			muestraError("No pude crear el directorio de destino: " + sys.argv[2])
 			sys.exit(1)
-		
+
 # Obtengo los parametros de entrada
 NombrePrograma=sys.argv[0].split(sep="/")[-1]
 print(NombrePrograma)
@@ -184,8 +230,8 @@ try:
 
 			if md5sum.hexdigest() not in Fotos:
 				try:
-# En este punto sabemos que la imagen es unica (no hay otra con el mismo md5sum), 
-# sin embargo puede haber un fichero con el mismo nombre y una imagen diferente procedente de otra camara 
+# En este punto sabemos que la imagen es unica (no hay otra con el mismo md5sum),
+# sin embargo puede haber un fichero con el mismo nombre y una imagen diferente procedente de otra camara
 # si DirectorioFoto/nombre ya existe entonces tenemos que cambiar el nombre al fichero para no sobrescribir
 # la foto con otra cuyo nombre de fichero es el mismo
 # en nombre tenemos la ruta absoluta al fichero origen, necesitamos solo el nombre del fichero
@@ -205,7 +251,7 @@ try:
 					bitacora(rutaBitacora, nombre + "," + Fotos[md5sum.hexdigest()][0] + "," + fecha + "," + error)
 				except UnicodeEncodeError:
 					print("un problema al dectectar un duplicado {}".format(nombre))
-	try:	
+	try:
 		print("Comienzo a copiar fotos")
 		for foto in Fotos:
 			print(Fotos[foto])
