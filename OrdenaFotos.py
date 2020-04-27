@@ -28,9 +28,13 @@ def comoUsar(mensajeError="Error generico: el programador ha sido demasiado vago
 	muestraError(mensajeError)
 	print ("Este programa recorre un directorio lleno de fotos")
 	print ("y las clasifica en un directorio destino por anho y mes")
+        print ("Trabaja en tres etapas:")
+        print ("   1 - calculate the data for the files")
+        print ("   2 - calculate the list of non duplicated files")
+        print ("   3 - copy files to the destination folder")
 	print ("Recibe como parametros: ")
-	print (" 1-. La ruta al directorio que contiene las fotos")
-	print (" 2-. La ruta al directorio donde queremos clasificar las fotos")
+	print (" Si la etapa es 1, entonces los siguientes parametros son la ruta donde se almacenan las fotos y la ruta donde queremos guardar las fotos clasificadas")
+	print (" Si la etapa es 2 o 3, entonces el siguiente parametro es la ruta hacia el fichero con el resultado parcial de la etapa 1")
 
 def esDirectorio(ruta):
 	if os.path.isdir(ruta):
