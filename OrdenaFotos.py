@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import os;
 import sys;
 import hashlib;
@@ -6,9 +6,9 @@ import io;
 import yaml;
 from shutil import copy
 from datetime import datetime;
-from PIL import Image;
-from PIL import UnidentifiedImageError;
-
+#from PIL import Image;
+#from PIL import UnidentifiedImageError;
+import PIL
 
 # algunas constantes
 nArg=4 # n'umero de argumentos de entrada
@@ -16,25 +16,25 @@ stage=1 # ejecutamos todas las etapas por defecto
 datos_fotos='datos_fotos.yml'
 
 def bitacora(rutaBitacora, mensaje):
-	print("{}: {}".format(rutaBitacora, mensaje))
-	file=open(rutaBitacora, "a+")
-	file.write(mensaje + "\n")
-	file.close()
+    print("{}: {}".format(rutaBitacora, mensaje))
+    file=open(rutaBitacora, "a+")
+    file.write(mensaje + "\n")
+    file.close()
 
 def muestraError(mensajeError="Error generico: el programador ha sido demasiado vago para especificar que ha pasado"):
-	print (mensajeError)
+    print (mensajeError)
 
 def comoUsar(mensajeError="Error generico: el programador ha sido demasiado vago para especificar que ha pasado"):
-	muestraError(mensajeError)
-	print ("Este programa recorre un directorio lleno de fotos")
-	print ("y las clasifica en un directorio destino por anho y mes")
-        print ("Trabaja en tres etapas:")
-        print ("   1 - calculate the data for the files")
-        print ("   2 - calculate the list of non duplicated files")
-        print ("   3 - copy files to the destination folder")
-	print ("Recibe como parametros: ")
-	print (" Si la etapa es 1, entonces los siguientes parametros son la ruta donde se almacenan las fotos y la ruta donde queremos guardar las fotos clasificadas")
-	print (" Si la etapa es 2 o 3, entonces el siguiente parametro es la ruta hacia el fichero con el resultado parcial de la etapa 1")
+    muestraError(mensajeError)
+    print ("Este programa recorre un directorio lleno de fotos")
+    print ("y las clasifica en un directorio destino por anho y mes")
+    #print ("Trabaja en tres etapas:")
+    print ("   1 - calculate the data for the files")
+    print ("   2 - calculate the list of non duplicated files")
+    print ("   3 - copy files to the destination folder")
+    print ("Recibe como parametros: ")
+    print (" Si la etapa es 1, entonces los siguientes parametros son la ruta donde se almacenan las fotos y la ruta donde queremos guardar las fotos clasificadascontiene las fotos")
+    print (" 2-. La ruta al directorio donde queremos clasificar las fotos")
 
 def esDirectorio(ruta):
 	if os.path.isdir(ruta):
@@ -96,8 +96,9 @@ def seleccionaNombre(nombre, DirectorioFoto):
 	return nombreTemp
 
 def calcularFileType(ruta_absoluta):
-    #TO DO
-    return 'unknown file type'
+    #super easy, we return the extension of the file
+    type = ruta_absoluta.split('.')[-1]
+    return type
 
 
 def stage1(ruta_fotos):
@@ -113,8 +114,8 @@ def stage1(ruta_fotos):
 # si tenemos datos de una ejecucion anterior, los cargamos
     if os.path.exists(os.path.join(ruta_fotos, datos_fotos)):
     # cargamos los md5sums de las fotos que se crearon
-	parcial=open(os.path.join(ruta_fotos, datos_fotos),'r')
-	df=yaml.load(parcial)
+        parcial=open(os.path.join(ruta_fotos, datos_fotos),'r')
+        df=yaml.load(parcial)
         close(parcial)
         # en este punto hemos cargado los datos de una ejecucion parcial anterior
     # Recorremos todos los ficheros que encontremos en 'ruta_fotos'
@@ -126,10 +127,23 @@ def stage1(ruta_fotos):
                 datos_archivo = dict()
                 datos_archivo['md5']=calcularMD5sum(ruta_absoluta)
                 datos_archivo['file_type']=calcularFileType(ruta_absoluta)
-                datos_archivo['error_type']='' # no es relevante todavia
+                datos_archivo['error_type']='NONE'
+                try:
+                    datos_archivo['date']=obtenerFechaFoto(ruta_absoluta)
+                except TypeError:
+                    datos_archivo['error_type']='TypeError'
+                except KeyError:
+                    datos_archivo['error_type']='KeyError'
+                except AttributeError:
+                    datos_archivo['error_type']='AttributeError'
+                except UnidentifiedImageError:
+                    datos_archivo['error_type']='UnidentifiedImageError'
+                except UnicodeEncodeError:
+                    datos_archivo['error_type']='UnicodeEncodeError'
+                except :
+                    datos_archivo['error_type']='UnknownError'
                 datos_archivo['dst_path']='' #no es relevante todavia
                 datos_archivo['src_path']=ruta_absoluta
-                datos_archivo['date']='' # TO DO
                 df[ruta_absoluta]=datos_archivo
     # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
     parcial= open(os.path.join(ruta_fotos, datos_fotos),'w')
@@ -149,32 +163,32 @@ if len(sys.argv) != nArg:
 	comoUsar()
 	sys.exit(1)
 else:
-	print ("Numero de par'ametros correcto " + sys.argv[1] + " " + sys.argv[2])
+	print ("Numero de par'ametros correcto " + sys.argv[1] + " " + sys.argv[2] + " " + sys.argv[3])
 
 # ?los parametros que hemos recibido son directorios?
 
-if not esDirectorio(sys.argv[1]):
-	comoUsar(mensajeError="El primer parametro no es un directorio")
+if not esDirectorio(sys.argv[2]):
+	comoUsar(mensajeError="El segundo parametro {} no es un directorio".format(sys.argv[2]))
 	sys.exit(1)
 
-if not esDirectorio(sys.argv[2]):
-	if os.path.exists(sys.argv[2]):
+if not esDirectorio(sys.argv[3]):
+	if os.path.exists(sys.argv[3]):
 		# la ruta existe pero es un fichero regular, devolvemos error
-		comoUsar(mensajeError="El segundo parametro " + sys.argv[2] + " es un fichero regular")
+		comoUsar(mensajeError="El tercer parametro " + sys.argv[3] + " es un fichero regular")
 		sys.exit(1)
 	else:
 		# la ruta destino no existe, la intentamos crear
-		if crearDirectorio(sys.argv[2]):
-			print ("Directorio de destino: " + sys.argv[2] + " creado correctamente")
+		if crearDirectorio(sys.argv[3]):
+			print ("Directorio de destino: " + sys.argv[3] + " creado correctamente")
 		else:
-			muestraError("No pude crear el directorio de destino: " + sys.argv[2])
+			muestraError("No pude crear el directorio de destino: " + sys.argv[3])
 			sys.exit(1)
 
 # Obtengo los parametros de entrada
 NombrePrograma=sys.argv[0].split(sep="/")[-1]
 print(NombrePrograma)
-DirectorioOrigen=sys.argv[1]
-DirectorioDestino=sys.argv[2]
+DirectorioOrigen=sys.argv[2]
+DirectorioDestino=sys.argv[3]
 ahora=datetime.now().strftime("%Y%m%d-%H%M%S")
 rutaBitacora=os.path.join(DirectorioDestino, NombrePrograma + "-" + ahora + ".txt")
 bitacora(rutaBitacora,"ORIGEN,DESTINO,FECHA,ERROR")
@@ -182,6 +196,15 @@ print(DirectorioDestino)
 Fotos=dict()
 # Obtengo la lista de archivos en un directorio
 
+
+for ruta,dirs,archs in os.walk(DirectorioOrigen.encode('utf-8', 'surrogateescape').decode('utf-8')):
+    print ("la ruta es : {}".format(ruta))
+    #	for dir in dirs:
+#            print("directorio: {}".format(dir))
+#        for a in archs:
+#            print("archivo: {}".format(a))
+print("saliendo que es gerundio")
+sys.exit(0)
 # ?hay una ejecuci'on anterior que no se completo?
 if os.path.exists(os.path.join(sys.argv[2], "EjecucionParcial.yml")):
 # cargamos los md5sums de las fotos que se crearon
