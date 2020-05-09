@@ -51,10 +51,13 @@ def calcularMD5sum(rutaAbsoluta, tamanoFragmento=io.DEFAULT_BUFFER_SIZE):
 	return md5
 
 def obtenerFechaFoto(rutaAbsoluta):
-	foto= Image.open(rutaAbsoluta)
-	fechaFoto= foto._getexif()[36867]
-	foto.close()
-	return fechaFoto
+    print ("Begin obtenerFechaFoto {}".format(rutaAbsoluta))
+    foto= PIL.Image.open(rutaAbsoluta)
+    print ("obtenerFechaFoto {} opened".format(rutaAbsoluta))
+    fechaFoto= foto._getexif()[36867]
+    foto.close()
+    print ("End obtenerFechaFoto {}".format(rutaAbsoluta))
+    return fechaFoto
 
 def crearDirectorio(ruta):
 # dada una ruta intenta crearla, si no puede devuelve error
@@ -100,9 +103,29 @@ def calcularFileType(ruta_absoluta):
     type = ruta_absoluta.split('.')[-1]
     return type
 
+def calcular_fecha_conocida(ruta_fecha):
+# dado un directorio lo recorre hasta que puede calcular la fecha de una foto
+    print("Begin calcular fecha conocida {}".format(ruta_fecha))
+    fecha_conocida='UNKNOWN'
+    for ruta,dirs,archs in os.walk(ruta_fecha.encode('utf-8', 'surrogateescape').decode('utf-8')):
+        for a in archs:
+            ruta_absoluta=os.path.join(ruta,a)
+            print ("intento calcular fecha de {}".format(ruta_absoluta))
+            try:
+                fecha_conocida=obtenerFechaFoto(ruta_absoluta)
+                print ("la fecha de {} es {}".format(ruta_absoluta,fecha_conocida))
+            except:
+                print("Oops!", sys.exc_info()[0], "occured.")
+                fecha_conocida='UNKNOWN'
+            if fecha_conocida != 'UNKNOWN':
+                break
+        if fecha_conocida != 'UNKNOWN':
+            break
+    print("End calcular fecha conocida {}".format(ruta_fecha))
+    return fecha_conocida
 
 def stage1(ruta_fotos):
-    datos_fotos="datos_fotos.yml"
+    datos_fotos="datos_fotos_stage1.yml"
 # En la etapa calculamos los datos de cada fichero
 #
     #src path for the file --> this is the key for the dictionary
@@ -111,15 +134,19 @@ def stage1(ruta_fotos):
     #error type
     #dst path for the file, it will include the month and year in which the photo was shoot if the file is a photo and if that data is available
     df=dict()
-# si tenemos datos de una ejecucion anterior, los cargamos
-    if os.path.exists(os.path.join(ruta_fotos, datos_fotos)):
-    # cargamos los md5sums de las fotos que se crearon
-        parcial=open(os.path.join(ruta_fotos, datos_fotos),'r')
-        df=yaml.load(parcial)
-        close(parcial)
-        # en este punto hemos cargado los datos de una ejecucion parcial anterior
-    # Recorremos todos los ficheros que encontremos en 'ruta_fotos'
     for ruta,dirs,archs in os.walk(ruta_fotos.encode('utf-8', 'surrogateescape').decode('utf-8')):
+    # Aqui, las acciones que dependen del directorio
+    # Si existe el fichero yml con datos parciales, entonces lo cargamos
+        if os.path.exists(os.path.join(ruta, datos_fotos)):
+            parcial=open(os.path.join(ruta, datos_fotos),'r')
+            df=yaml.load(parcial)
+            close(parcial)
+        # en este punto hemos cargado los datos de una ejecucion parcial anterior
+    # Recorremos todos los ficheros que encontremos en 'ruta'
+    # photo cameras create files sequentially, if we know the date of a previous photograph
+    # then we can assume the current file date is similar
+    # reiniciamos el valor de la ultima fecha conocida para el directorio
+        ultima_fecha_conocida=calcular_fecha_conocida(ruta)
         for archivo in archs:
             ruta_absoluta=os.path.join(ruta, archivo)
             if not ruta_absoluta in df:
@@ -142,14 +169,21 @@ def stage1(ruta_fotos):
                     datos_archivo['error_type']='UnicodeEncodeError'
                 except :
                     datos_archivo['error_type']='UnknownError'
-                datos_archivo['dst_path']='' #no es relevante todavia
+                if datos_archivo['error_type'] == 'NONE':
+                    # tenemos una fecha conocida nueva, actualizamos la ultima fecha conocida
+                    ultima_fecha_conocida=datos_archivo['date']
+                else:
+                    # no pudimos calcular la fecha del archivo, suponemos que la ultima fecha conocida es lo suficientemente aproximada
+                    datos_archivo['date']=ultima_fecha_conocida
+                #datos_archivo['dst_path']='' #no es relevante todavia
                 datos_archivo['src_path']=ruta_absoluta
+                print(datos_archivo)
+                input()
                 df[ruta_absoluta]=datos_archivo
-    # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
-    parcial= open(os.path.join(ruta_fotos, datos_fotos),'w')
-    yaml.dump(df, stream=parcial)
-    parcial.close()
-
+        # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
+        parcial= open(os.path.join(ruta, datos_fotos),'w')
+        yaml.dump(df, stream=parcial)
+        parcial.close()
     return true
 
 #
@@ -187,6 +221,7 @@ if not esDirectorio(sys.argv[3]):
 # Obtengo los parametros de entrada
 NombrePrograma=sys.argv[0].split(sep="/")[-1]
 print(NombrePrograma)
+stage=int(sys.argv[1])
 DirectorioOrigen=sys.argv[2]
 DirectorioDestino=sys.argv[3]
 ahora=datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -194,18 +229,14 @@ rutaBitacora=os.path.join(DirectorioDestino, NombrePrograma + "-" + ahora + ".tx
 bitacora(rutaBitacora,"ORIGEN,DESTINO,FECHA,ERROR")
 print(DirectorioDestino)
 Fotos=dict()
-# Obtengo la lista de archivos en un directorio
 
-
-for ruta,dirs,archs in os.walk(DirectorioOrigen.encode('utf-8', 'surrogateescape').decode('utf-8')):
-    print ("la ruta es : {}".format(ruta))
-    #	for dir in dirs:
-#            print("directorio: {}".format(dir))
-#        for a in archs:
-#            print("archivo: {}".format(a))
-print("saliendo que es gerundio")
-sys.exit(0)
-# ?hay una ejecuci'on anterior que no se completo?
+print ("We will process stage {}".format(stage))
+if stage==1:
+    print("begin stage1")
+    stage1(DirectorioOrigen)
+    print("end stage1")
+else:
+    sys.exit(0)
 if os.path.exists(os.path.join(sys.argv[2], "EjecucionParcial.yml")):
 # cargamos los md5sums de las fotos que se crearon
 	parcial=open(os.path.join(sys.argv[2], "EjecucionParcial.yml"),'r')
