@@ -6,9 +6,9 @@ import io;
 import yaml;
 from shutil import copy
 from datetime import datetime;
-#from PIL import Image;
-#from PIL import UnidentifiedImageError;
-import PIL
+from PIL import Image;
+from PIL import UnidentifiedImageError;
+#import PIL
 
 # algunas constantes
 nArg=4 # n'umero de argumentos de entrada
@@ -52,7 +52,7 @@ def calcularMD5sum(rutaAbsoluta, tamanoFragmento=io.DEFAULT_BUFFER_SIZE):
 
 def obtenerFechaFoto(rutaAbsoluta):
     print ("Begin obtenerFechaFoto {}".format(rutaAbsoluta))
-    foto= PIL.Image.open(rutaAbsoluta)
+    foto= Image.open(rutaAbsoluta)
     print ("obtenerFechaFoto {} opened".format(rutaAbsoluta))
     fechaFoto= foto._getexif()[36867]
     foto.close()
@@ -116,6 +116,7 @@ def calcular_fecha_conocida(ruta_fecha):
                 print ("la fecha de {} es {}".format(ruta_absoluta,fecha_conocida))
             except:
                 print("Oops!", sys.exc_info()[0], "occured.")
+                raise()
                 fecha_conocida='UNKNOWN'
             if fecha_conocida != 'UNKNOWN':
                 break
