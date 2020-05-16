@@ -8,7 +8,6 @@ from shutil import copy
 from datetime import datetime;
 from PIL import Image;
 from PIL import UnidentifiedImageError;
-#import PIL
 
 # algunas constantes
 nArg=4 # n'umero de argumentos de entrada
@@ -51,12 +50,12 @@ def calcularMD5sum(rutaAbsoluta, tamanoFragmento=io.DEFAULT_BUFFER_SIZE):
 	return md5
 
 def obtenerFechaFoto(rutaAbsoluta):
-    print ("Begin obtenerFechaFoto {}".format(rutaAbsoluta))
+    #print ("Begin obtenerFechaFoto {}".format(rutaAbsoluta))
     foto= Image.open(rutaAbsoluta)
-    print ("obtenerFechaFoto {} opened".format(rutaAbsoluta))
+    #print ("obtenerFechaFoto {} opened".format(rutaAbsoluta))
     fechaFoto= foto._getexif()[36867]
     foto.close()
-    print ("End obtenerFechaFoto {}".format(rutaAbsoluta))
+    #print ("End obtenerFechaFoto {}".format(rutaAbsoluta))
     return fechaFoto
 
 def crearDirectorio(ruta):
@@ -105,28 +104,28 @@ def calcularFileType(ruta_absoluta):
 
 def calcular_fecha_conocida(ruta_fecha):
 # dado un directorio lo recorre hasta que puede calcular la fecha de una foto
-    print("Begin calcular fecha conocida {}".format(ruta_fecha))
+    #print("Begin calcular fecha conocida {}".format(ruta_fecha))
     fecha_conocida='UNKNOWN'
     for ruta,dirs,archs in os.walk(ruta_fecha.encode('utf-8', 'surrogateescape').decode('utf-8')):
         for a in archs:
             ruta_absoluta=os.path.join(ruta,a)
-            print ("intento calcular fecha de {}".format(ruta_absoluta))
+    #        print ("intento calcular fecha de {}".format(ruta_absoluta))
             try:
                 fecha_conocida=obtenerFechaFoto(ruta_absoluta)
-                print ("la fecha de {} es {}".format(ruta_absoluta,fecha_conocida))
+    #            print ("la fecha de {} es {}".format(ruta_absoluta,fecha_conocida))
             except:
                 print("Oops!", sys.exc_info()[0], "occured.")
-                raise()
                 fecha_conocida='UNKNOWN'
             if fecha_conocida != 'UNKNOWN':
                 break
         if fecha_conocida != 'UNKNOWN':
             break
-    print("End calcular fecha conocida {}".format(ruta_fecha))
+    #print("End calcular fecha conocida {}".format(ruta_fecha))
     return fecha_conocida
 
-def stage1(ruta_fotos):
+def stage1(ruta_fotos, ruta_bitacora):
     datos_fotos="datos_fotos_stage1.yml"
+    bitacora(ruta_bitacora, "Iniciando stage 1 en {}".format(ruta_fotos))
 # En la etapa calculamos los datos de cada fichero
 #
     #src path for the file --> this is the key for the dictionary
@@ -138,22 +137,27 @@ def stage1(ruta_fotos):
     for ruta,dirs,archs in os.walk(ruta_fotos.encode('utf-8', 'surrogateescape').decode('utf-8')):
     # Aqui, las acciones que dependen del directorio
     # Si existe el fichero yml con datos parciales, entonces lo cargamos
+        bitacora(ruta_bitacora,"INICIO stage 1 en {}".format(ruta))
+        df=dict()
         if os.path.exists(os.path.join(ruta, datos_fotos)):
             parcial=open(os.path.join(ruta, datos_fotos),'r')
-            df=yaml.load(parcial)
-            close(parcial)
+            df=yaml.load(parcial, Loader=yaml.FullLoader)
+            parcial.close()
         # en este punto hemos cargado los datos de una ejecucion parcial anterior
     # Recorremos todos los ficheros que encontremos en 'ruta'
     # photo cameras create files sequentially, if we know the date of a previous photograph
     # then we can assume the current file date is similar
     # reiniciamos el valor de la ultima fecha conocida para el directorio
+        if df is None:
+            df=dict()
         ultima_fecha_conocida=calcular_fecha_conocida(ruta)
         for archivo in archs:
             ruta_absoluta=os.path.join(ruta, archivo)
+            #bitacora(ruta_bitacora,"Inicio stage 1 en {}".format(ruta_absoluta))
             if not ruta_absoluta in df:
                 # es la primera vez que procesamos el archivo
                 datos_archivo = dict()
-                datos_archivo['md5']=calcularMD5sum(ruta_absoluta)
+                datos_archivo['md5']=calcularMD5sum(ruta_absoluta).hexdigest()
                 datos_archivo['file_type']=calcularFileType(ruta_absoluta)
                 datos_archivo['error_type']='NONE'
                 try:
@@ -178,14 +182,116 @@ def stage1(ruta_fotos):
                     datos_archivo['date']=ultima_fecha_conocida
                 #datos_archivo['dst_path']='' #no es relevante todavia
                 datos_archivo['src_path']=ruta_absoluta
-                print(datos_archivo)
-                input()
                 df[ruta_absoluta]=datos_archivo
         # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
         parcial= open(os.path.join(ruta, datos_fotos),'w')
         yaml.dump(df, stream=parcial)
         parcial.close()
+        bitacora(ruta_bitacora, "FIN stage 1: He procesaso {} ficheros en {}".format(len(df), ruta))
+
+    bitacora(ruta_bitacora, "Acbada stage 1 en {}".format(ruta_fotos))
     return true
+# end stage1
+
+def stage2(ruta_fotos, ruta_bitacora):
+    datos_fotos="datos_fotos_stage1.yml"
+    unicas="fotos_unicas_stage2.yml"
+# En la etapa buscamos las fotos unicas (que no est'an duplicadas en otro directorio)
+#
+    #src path for the file --> this is the key for the dictionary
+    #md5 sum
+    #file type
+    #error type
+    #dst path for the file, it will include the month and year in which the photo was shoot if the file is a photo and if that data is available
+
+    df=dict() # datos fotos de la stage 1
+    fu=dict() # datos de las fotos unicas en el directorio actual
+    bymd5=[] # lista de los md5 de TODAS las fotos 'unicas detectadas hasta el momento
+
+    bitacora(ruta_bitacora, "Iniciando stage 2 en {}".format(ruta_fotos))
+    bitacora(ruta_bitacora, "".format(ruta_fotos))
+    for ruta,dirs,archs in os.walk(ruta_fotos.encode('utf-8', 'surrogateescape').decode('utf-8')):
+    # Aqui, las acciones que dependen del directorio
+    # Si existe el fichero yml con datos parciales, entonces lo cargamos
+        bitacora(ruta_bitacora, "Entrando en directorio {}".format(ruta))
+        fu=dict()
+        if os.path.exists(os.path.join(ruta, datos_fotos)):
+            parcial=open(os.path.join(ruta, datos_fotos),'r')
+            df=yaml.load(parcial, Loader=yaml.FullLoader)
+            parcial.close()
+        # en este punto hemos cargado los datos de la etapa 1
+        if os.path.exists(os.path.join(ruta, unicas)):
+            parcial=open(os.path.join(ruta, unicas),'r')
+            fu=yaml.load(parcial, Loader=yaml.FullLoader)
+            parcial.close()
+    # Recorremos todos los ficheros que encontremos en 'ruta'
+    # photo cameras create files sequentially, if we know the date of a previous photograph
+    # then we can assume the current file date is similar
+    # reiniciamos el valor de la ultima fecha conocida para el directorio
+        if df is None:
+            df=dict()
+        if fu is None:
+            fu=dict()
+
+        # para cada foto en df
+        #   si el md5sum de la foto no est'a en bymd5 entonces
+        #       incluir el md5sum en bymd5
+        #       incluir la foto en fu
+        for f in df:
+            if f['md5'] in bymd5:
+                bitacora(ruta_bitacora,"El fichero {} es UNICO".format(f['src_path']))
+                bymd5.append(f['md5'])
+                fu[f['src_path']]=f
+            else:
+                bitacora(ruta_bitacora,"El fichero {} es duplicado".format(f['src_path']))
+
+        # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
+        parcial= open(os.path.join(ruta, unicas),'w')
+        yaml.dump(fu, stream=parcial)
+        parcial.close()
+        bitacora(ruta_bitacora, "Saliendo de directorio {}".format(ruta))
+    bitacora(ruta_bitacora, "Acabada stage 2 en {}".format(ruta_fotos))
+    return true
+# end stage2
+
+def stage3(ruta_fotos, ruta_destino, ruta_bitacora ):
+# para cada directorio en ruta_fotos
+#   Cargo el fichero de unicas.yml
+#   Para cada fichero en unicas.yml
+#       Calculo el directorio de destino
+#       copio el fichero al directorio de destino
+    unicas="fotos_unicas_stage2.yml"
+    fu=dict()
+
+    bitacora(ruta_bitacora, "Iniciando stage 3 en {}".format(ruta_fotos))
+    for ruta,dirs,archs in os.walk(ruta_fotos.encode('utf-8', 'surrogateescape').decode('utf-8')):
+        bitacora(ruta_bitacora, "Entrando stage 3 en {}".format(ruta_fotos))
+        # abrimos el fichero con las fotos unicas
+        if os.path.exists(os.path.join(ruta, unicas)):
+            parcial=open(os.path.join(ruta, unicas),'r')
+            fu=yaml.load(parcial, Loader=yaml.FullLoader)
+            parcial.close()
+        if fu is None:
+            fu=dict()
+        for f in fu:
+            anho=f['date'][:4]
+            mes=f['date'][5:7]
+            dst_absoluto=os.path.join(ruta_destino, anho, mes + '/')
+            nombreDestino=seleccionaNombre(nombreFichero, dst_absoluto)
+            bitacora(ruta_bitacora,"Voy a copiar {} en {}".format(f['src_path'],NombreDestino))
+            #copy(f['src_path'], dst_absoluto)
+    # Cada entrada en fu tiene los campos:
+    #src path for the file --> this is the key for the dictionary
+    #md5 sum
+    #file type
+    #error type
+    # 'date': '2012:04:30 12:43:06'
+    #dst path for the file, it will include the month and year in which the photo was shoot if the file is a photo and if that data is available
+        bitacora(ruta_bitacora, "Saliendo stage 3 en {}".format(ruta_fotos))
+
+    bitacora(ruta_bitacora, "Acabada stage 3 en {}".format(ruta_fotos))
+    return true
+# end stage3
 
 #
 # Programa principal
@@ -233,9 +339,7 @@ Fotos=dict()
 
 print ("We will process stage {}".format(stage))
 if stage==1:
-    print("begin stage1")
-    stage1(DirectorioOrigen)
-    print("end stage1")
+    stage1(DirectorioOrigen,rutaBitacora)
 else:
     sys.exit(0)
 if os.path.exists(os.path.join(sys.argv[2], "EjecucionParcial.yml")):

@@ -16,8 +16,11 @@ Stage 2
 =======
 T program moves around t subfolders f t given folder. In ey subfolder it wi load t 'photos.yml' file n f ey photo data entry it wi check if th is a duplicate r another folder.
 
+In ey folder it wi create a folder that will contain the entries for the unique photos (i.e. those h dt v a duplicate)
+
 If there is a duplicate r another folder it wi o include t file in t list and it wi include it if th is o a duplicate.
 
-2-. Calculate the list of non-duplicated files
-3-. Copy non-duplicated files to their destination folders
-    dst path for the file, it will include the month and year in which the photo was shoot if the file is a photo and if that data is available
+Stage 3
+=======
+T program moves aorund t subfolders f t given folder. In ey subfolder it wi load t 'uniques.yml' file n f ey photo data entry it wi copy it to its destination.
+
