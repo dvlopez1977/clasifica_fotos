@@ -189,13 +189,20 @@ def stage1(ruta_fotos, ruta_bitacora):
         parcial.close()
         bitacora(ruta_bitacora, "FIN stage 1: He procesaso {} ficheros en {}".format(len(df), ruta))
 
-    bitacora(ruta_bitacora, "Acbada stage 1 en {}".format(ruta_fotos))
-    return true
+    bitacora(ruta_bitacora, "Acabada stage 1 en {}".format(ruta_fotos))
+    return True
 # end stage1
+
+def dame_tamano(ruta_foto):
+    tamano=0
+    tamano=os.path.getsize(ruta_foto)/1048576 #getsize devuelve el tamano en bytes, dividimos para tenerlo en megas
+    return tamano
+#end dame_tamano
 
 def stage2(ruta_fotos, ruta_bitacora):
     datos_fotos="datos_fotos_stage1.yml"
     unicas="fotos_unicas_stage2.yml"
+    tamano_total = 0
 # En la etapa buscamos las fotos unicas (que no est'an duplicadas en otro directorio)
 #
     #src path for the file --> this is the key for the dictionary
@@ -237,21 +244,27 @@ def stage2(ruta_fotos, ruta_bitacora):
         #   si el md5sum de la foto no est'a en bymd5 entonces
         #       incluir el md5sum en bymd5
         #       incluir la foto en fu
+#        print("El contenido de df es {}".format(df))
         for f in df:
-            if f['md5'] in bymd5:
-                bitacora(ruta_bitacora,"El fichero {} es UNICO".format(f['src_path']))
-                bymd5.append(f['md5'])
-                fu[f['src_path']]=f
+#            print ("El contenido de {} es {}".format(f,df[f]))
+            #print ("El contenido de bymd5 es {}".format(bymd5))
+            if not df[f]['md5'] in bymd5:
+                bitacora(ruta_bitacora,"El fichero {} es UNICO".format(df[f]['src_path']))
+                bymd5.append(df[f]['md5'])
+                fu[f]=df[f]
+                tamano_total = tamano_total + dame_tamano(df[f]['src_path'])
             else:
-                bitacora(ruta_bitacora,"El fichero {} es duplicado".format(f['src_path']))
+                bitacora(ruta_bitacora,"El fichero {} es duplicado".format(df[f]['src_path']))
+            #input()
 
         # en este punto tenemos todos los datos en memoria, hay que volcarlos a disco
         parcial= open(os.path.join(ruta, unicas),'w')
         yaml.dump(fu, stream=parcial)
         parcial.close()
         bitacora(ruta_bitacora, "Saliendo de directorio {}".format(ruta))
+    bitacora(ruta_bitacora, "Son necesarios {}Gb para copiar los ficheros unicos".format(tamano_total/1024))
     bitacora(ruta_bitacora, "Acabada stage 2 en {}".format(ruta_fotos))
-    return true
+    return tamano_total
 # end stage2
 
 def stage3(ruta_fotos, ruta_destino, ruta_bitacora ):
@@ -274,12 +287,17 @@ def stage3(ruta_fotos, ruta_destino, ruta_bitacora ):
         if fu is None:
             fu=dict()
         for f in fu:
-            anho=f['date'][:4]
-            mes=f['date'][5:7]
+            anho=fu[f]['date'][:4]
+            mes=fu[f]['date'][5:7]
             dst_absoluto=os.path.join(ruta_destino, anho, mes + '/')
+            # si el directorio destino no existe, entontes lo creamos
+            crearDirectorio(dst_absoluto)
+            # Obtenemos el nombre del fichero de la ruta absoluta en f
+            nombreFichero=f.split('/')[-1]
             nombreDestino=seleccionaNombre(nombreFichero, dst_absoluto)
-            bitacora(ruta_bitacora,"Voy a copiar {} en {}".format(f['src_path'],NombreDestino))
-            #copy(f['src_path'], dst_absoluto)
+            dst_absoluto=os.path.join(dst_absoluto,nombreDestino)
+            bitacora(ruta_bitacora,"Voy a copiar {} en {}".format(fu[f]['src_path'],dst_absoluto))
+            copy(fu[f]['src_path'], dst_absoluto)
     # Cada entrada en fu tiene los campos:
     #src path for the file --> this is the key for the dictionary
     #md5 sum
@@ -290,7 +308,7 @@ def stage3(ruta_fotos, ruta_destino, ruta_bitacora ):
         bitacora(ruta_bitacora, "Saliendo stage 3 en {}".format(ruta_fotos))
 
     bitacora(ruta_bitacora, "Acabada stage 3 en {}".format(ruta_fotos))
-    return true
+    return True
 # end stage3
 
 #
@@ -340,8 +358,14 @@ Fotos=dict()
 print ("We will process stage {}".format(stage))
 if stage==1:
     stage1(DirectorioOrigen,rutaBitacora)
-else:
     sys.exit(0)
+if stage==2:
+    stage2(DirectorioOrigen,rutaBitacora)
+    sys.exit(0)
+if stage==3:
+    stage3(DirectorioOrigen,DirectorioDestino,rutaBitacora)
+    sys.exit(0)
+
 if os.path.exists(os.path.join(sys.argv[2], "EjecucionParcial.yml")):
 # cargamos los md5sums de las fotos que se crearon
 	parcial=open(os.path.join(sys.argv[2], "EjecucionParcial.yml"),'r')
